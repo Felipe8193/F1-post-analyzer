@@ -1,3 +1,8 @@
 dot/
 venv/
 t5_f1_sentiment_model/
+t5_f1_sentiment_model.zip
+results_continuacao/
+results_continuacao.zip
+__pycache__/
+logs/

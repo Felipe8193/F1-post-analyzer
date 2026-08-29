@@ -1,4 +1,5 @@
 
+
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -14,6 +15,15 @@ from transformers import (
 import torch
 import numpy as np
 import warnings
+import logging
+
+
+# Configuração do logger
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Suprimir avisos de datasets
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -30,35 +40,42 @@ def load_and_preprocess_data(data_file):
     """
     Carrega o CSV rotulado E CONVERTE labels de texto para inteiros.
     """
+
+    logger.info(f"Carregando dados do arquivo: {data_file}")
     try:
         df = pd.read_csv(data_file)
     except FileNotFoundError:
-        print(f"Erro: Arquivo '{data_file}' não encontrado.")
-        print("Você executou a Etapa 3 (Rotulagem Manual) e salvou o arquivo?")
+        logger.error(f"Arquivo '{data_file}' não encontrado.")
+        logger.error("Você executou a Etapa 3 (Rotulagem Manual) e salvou o arquivo?")
         return None
 
     # Limpeza básica
+
     df = df.dropna(subset=['Texto_Traduzido_PT', 'label'])
+    logger.info(f"Após remoção de NaNs, {len(df)} amostras restantes.")
 
     # Filtra para garantir que só temos as labels esperadas
     df = df[df['label'].isin(LABELS)]
+    logger.info(f"Após filtro de labels válidas, {len(df)} amostras restantes.")
 
     if len(df) < 20:
-        print("Erro: Dados insuficientes para treinar. Rotule mais posts.")
+        logger.error("Dados insuficientes para treinar. Rotule mais posts.")
         return None
+
 
     # --- CORREÇÃO CRÍTICA ---
     # Mapeia "boa" -> 0 e "ruim" -> 1
-    # Este é o passo que estava faltando e causando o erro
     df['label'] = df['label'].map(LABEL_MAP)
     # --- FIM DA CORREÇÃO ---
 
-    print(f"Dados carregados. Total de amostras rotuladas: {len(df)}")
-    print(f"Contagem de labels (0=boa, 1=ruim):\n{df['label'].value_counts()}")
+    logger.info(f"Dados carregados. Total de amostras rotuladas: {len(df)}")
+    logger.info(f"Contagem de labels (0=boa, 1=ruim):\n{df['label'].value_counts()}")
 
     # Dividir em treino e teste (80% treino, 20% teste)
     # Stratify usa a coluna 'label' numérica
+
     df_train, df_test = train_test_split(df, test_size=0.25, random_state=42, stratify=df['label'])
+    logger.info(f"Split: {len(df_train)} treino, {len(df_test)} teste.")
 
     # Converter para o formato Dataset do Hugging Face
     dataset = DatasetDict({
@@ -66,6 +83,7 @@ def load_and_preprocess_data(data_file):
         'test': Dataset.from_pandas(df_test, preserve_index=False)
     })
 
+    logger.info("Dados convertidos para HuggingFace DatasetDict.")
     return dataset
 
 def tokenize_data(dataset, tokenizer):
@@ -86,7 +104,7 @@ def tokenize_data(dataset, tokenizer):
         # --- FIM DA CORREÇÃO ---
         return model_inputs
 
-    print("Tokenizando dados para classificação...")
+    logger.info("Tokenizando dados para classificação...")
     # Remove colunas desnecessárias APENAS para o map.
     # 'text' e 'label' são necessários para a preprocess_function.
     # Correção do 'KeyError'
@@ -99,6 +117,7 @@ def plot_confusion_matrix(y_true, y_pred, title, labels_for_plot):
     Plota a matriz de confusão.
     """
     cm = confusion_matrix(y_true, y_pred, labels=labels_for_plot)
+    logger.info(f"Matriz de confusão para {title}:\n{cm}")
     plt.figure(figsize=(6, 5))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                 xticklabels=labels_for_plot, yticklabels=labels_for_plot)
@@ -111,14 +130,15 @@ def main():
     # 1. Carregar e pré-processar dados
     raw_dataset = load_and_preprocess_data(DATA_FILE)
     if raw_dataset is None:
+        logger.error("Pipeline encerrado por erro nos dados.")
         return
 
     # Verificar se a GPU está disponível
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Usando dispositivo: {device}")
+    logger.info(f"Usando dispositivo: {device}")
 
     # 2. Carregar Tokenizador e Modelo de Classificação
-    print(f"Carregando tokenizador e modelo: {MODEL_NAME}")
+    logger.info(f"Carregando tokenizador e modelo: {MODEL_NAME}")
     tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME)
 
     model = T5ForSequenceClassification.from_pretrained(
@@ -130,10 +150,9 @@ def main():
     tokenized_datasets = tokenize_data(raw_dataset, tokenizer)
 
     # 3. Definir Argumentos de Treinamento
-    # Use este bloco se sua biblioteca 'transformers' está ATUALIZADA
     training_args = TrainingArguments(
         output_dir=MODEL_OUTPUT_DIR,
-        max_steps=2000,
+        max_steps=5000,
         num_train_epochs=50,             # 5 épocas (ajuste conforme necessário)
         per_device_train_batch_size=4,  # Reduza se tiver OOM (Out of Memory)
         per_device_eval_batch_size=4,
@@ -157,17 +176,17 @@ def main():
     )
 
     # 5. Treinar o Modelo
-    print("\n--- Iniciando o Finetuning do T5 ---")
+    logger.info("--- Iniciando o Finetuning do T5 ---")
     trainer.train()
-    print("--- Treinamento Concluído ---")
+    logger.info("--- Treinamento Concluído ---")
 
     # 6. Salvar o Modelo Final e Tokenizador
     trainer.save_model()
     tokenizer.save_pretrained(MODEL_OUTPUT_DIR)
-    print(f"\nModelo salvo com sucesso em: {MODEL_OUTPUT_DIR}")
+    logger.info(f"Modelo salvo com sucesso em: {MODEL_OUTPUT_DIR}")
 
     # 7. Mostrar Evolução do Aprendizado
-    print("\n--- Evolução do Aprendizado (Histórico de Loss) ---")
+    logger.info("--- Evolução do Aprendizado (Histórico de Loss) ---")
     loss_history_df = pd.DataFrame(trainer.state.log_history)
 
     eval_logs = loss_history_df[loss_history_df['eval_loss'].notna()].set_index('epoch')
@@ -176,7 +195,7 @@ def main():
     combined_logs = eval_logs[['eval_loss']].join(train_logs[['loss']], how='left')
     combined_logs.rename(columns={'loss': 'train_loss'}, inplace=True)
 
-    print(combined_logs)
+    logger.info(f"Histórico de loss:\n{combined_logs}")
 
     plt.figure(figsize=(10, 4))
     plt.plot(combined_logs.index, combined_logs['eval_loss'], label="Perda (Validação)", marker='o')
@@ -189,10 +208,10 @@ def main():
     plt.show()
 
     # 8. Avaliação e Matriz de Confusão (Correto para Classificação)
-    print("\n--- Avaliação Detalhada e Matrizes de Confusão ---")
+    logger.info("--- Avaliação Detalhada e Matrizes de Confusão ---")
 
     for split in ['train', 'test']:
-        print(f"\nAvaliando no conjunto de {split}...")
+        logger.info(f"Avaliando no conjunto de {split}...")
         dataset_to_eval = tokenized_datasets[split]
 
         predictions_output = trainer.predict(dataset_to_eval)
@@ -213,8 +232,7 @@ def main():
         predicted_text = [LABELS[i] for i in predicted_indices]
         true_text = [LABELS[i] for i in true_labels]
 
-        print(f"\nRelatório de Classificação ({split}):")
-        print(classification_report(true_text, predicted_text, labels=LABELS, zero_division=0))
+        logger.info(f"Relatório de Classificação ({split}):\n{classification_report(true_text, predicted_text, labels=LABELS, zero_division=0)}")
 
         # Plota a matriz usando os nomes
         plot_confusion_matrix(

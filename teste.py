@@ -22,15 +22,8 @@ except OSError:
     print("Verifique se o caminho está correto e se o modelo foi treinado e salvo.")
     exit()
 
+new_text = str(input("Digite o texto para análise de sentimento: "))
 
-# --- 3. Texto para Análise ---
-# 
-# !!! MUDE ESTE TEXTO PARA TESTAR O MODELO !!!
-#
-# new_text = "Que corrida espetacular! O Hamilton pilotou muito hoje."
-# new_text = "A Ferrari errou a estratégia de novo, que desastre."
-new_text = "Péssima qualificação, o carro não tinha ritmo nenhum."
-#new_text = "O Norris conseguiu um pódio incrível, estou muito feliz!"
 
 print(f"\nAnalisando o texto: '{new_text}'")
 
