@@ -6,3 +6,7 @@ results_continuacao/
 results_continuacao.zip
 __pycache__/
 logs/
+checkpoints/
+# credenciais locais - nunca versionar
+configuracao.py
+.env

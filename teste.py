@@ -1,59 +1,45 @@
-import torch
-from transformers import T5Tokenizer, T5ForSequenceClassification
+"""Classifica textos digitados no terminal usando o modelo treinado.
 
-# --- 1. Definições ---
+Uso:
+  python teste.py                       # modo interativo (Enter vazio para sair)
+  python teste.py "Que corrida incrível do Norris!"
+"""
+import sys
 
-# Mude para o caminho correto do seu modelo salvo
-# Pode ser './meu_modelo_f1_instagram' ou o do Reddit
-MODEL_PATH = "C:/Users/Felipe/Desktop/Nova pasta/t5_f1_sentiment_model" 
+import config
+from modelo import carregar_modelo, prever_proba
 
-# Mapeamento dos rótulos (Índice 0 = Boa, Índice 1 = Ruim)
-labels_map = {0: "Boa", 1: "Ruim"}
-
-# --- 2. Carregar o Modelo e Tokenizador Salvos ---
-print(f"Carregando modelo salvo de '{MODEL_PATH}'...")
-try:
-    tokenizer = T5Tokenizer.from_pretrained(MODEL_PATH)
-    model = T5ForSequenceClassification.from_pretrained(MODEL_PATH)
-    model.eval()
-    print("Modelo e tokenizador carregados com sucesso!")
-except OSError:
-    print(f"Erro: Não foi possível encontrar um modelo em '{MODEL_PATH}'.")
-    print("Verifique se o caminho está correto e se o modelo foi treinado e salvo.")
-    exit()
-
-new_text = str(input("Digite o texto para análise de sentimento: "))
+sys.stdout.reconfigure(encoding="utf-8")
 
 
-print(f"\nAnalisando o texto: '{new_text}'")
+def mostrar(texto, proba):
+    idx = proba.argmax()
+    rotulo = config.ID2LABEL[idx].capitalize()
+    aviso = "  (baixa confiança – provavelmente neutro)" if proba[idx] < 0.6 else ""
+    print(f"\n  Texto: {texto}")
+    print(f"  Sentimento: {rotulo}  |  confiança {proba[idx]:.1%}{aviso}")
+    print(f"  Boa: {proba[0]:.1%}   Ruim: {proba[1]:.1%}\n")
 
 
-# --- 4. Processo de Previsão ---
+def main():
+    print(f"Carregando modelo de '{config.MODEL_DIR.name}'...")
+    try:
+        tokenizer, model = carregar_modelo()
+    except FileNotFoundError as e:
+        print(e)
+        sys.exit(1)
 
-# Tokeniza o texto e o converte para tensores do PyTorch
-inputs = tokenizer(
-    ["classifique o sentimento: " + new_text],
-    return_tensors="pt",
-    truncation=True,
-    padding="max_length",
-    max_length=512
-)
+    if len(sys.argv) > 1:
+        texto = " ".join(sys.argv[1:])
+        mostrar(texto, prever_proba([texto], tokenizer, model)[0])
+        return
 
-# Faz a previsão
-with torch.no_grad():
-    outputs = model(**inputs)
+    while True:
+        texto = input("Digite um post (Enter vazio para sair): ").strip()
+        if not texto:
+            break
+        mostrar(texto, prever_proba([texto], tokenizer, model)[0])
 
-# O 'outputs.logits' contém a pontuação bruta para cada classe (Boa, Ruim)
-logits = outputs.logits[0]
 
-# Pega o índice (0 ou 1) que teve a maior pontuação
-prediction_index = torch.argmax(logits).item()
-
-# Mapeia o índice de volta para a etiqueta legível ("Boa" ou "Ruim")
-prediction_label = labels_map[prediction_index]
-
-# --- 5. Exibir Resultado ---
-print(f"\nResultado da Análise: {prediction_label} (Score: {prediction_index})")
-
-# Opcional: Mostrar os scores brutos
-print(f"Scores (Logits): {logits.numpy()}")
+if __name__ == "__main__":
+    main()
